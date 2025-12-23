@@ -1,17 +1,34 @@
+import os
 import json
 import hashlib
 import random
-import os
-from datetime import datetime
+from tkinter import *
+from tkinter import filedialog, messagebox, simpledialog
 from cryptography.fernet import Fernet
 
+# ---------------- CONFIG ----------------
 USERS_FILE = "users.json"
 FILES_DIR = "encrypted_files"
+DECRYPTED_DIR = "decrypted_files"
 KEY_FILE = "secret.key"
 
+# Always dark theme
+theme = {
+    "BG": "#0f172a",
+    "CARD": "#1e293b",
+    "TEXT": "#e5e7eb",
+    "PRIMARY": "#6366f1",
+    "SUCCESS": "#22c55e",
+    "DANGER": "#ef4444"
+}
 
-# ---------- SETUP ----------
+FONT_TITLE = ("Segoe UI", 20, "bold")
+FONT_LABEL = ("Segoe UI", 11)
+FONT_BTN = ("Segoe UI", 11, "bold")
+
+# ---------------- SETUP ----------------
 os.makedirs(FILES_DIR, exist_ok=True)
+os.makedirs(DECRYPTED_DIR, exist_ok=True)
 
 if not os.path.exists(USERS_FILE):
     with open(USERS_FILE, "w") as f:
@@ -24,8 +41,7 @@ if not os.path.exists(KEY_FILE):
 with open(KEY_FILE, "rb") as f:
     cipher = Fernet(f.read())
 
-
-# ---------- AUTH ----------
+# ---------------- BACKEND ----------------
 def hash_password(p):
     return hashlib.sha256(p.encode()).hexdigest()
 
@@ -37,142 +53,186 @@ def save_users(users):
     with open(USERS_FILE, "w") as f:
         json.dump(users, f, indent=4)
 
-def register_user(u, p):
+def register(username, password):
     users = load_users()
-    if u in users:
+    if username in users:
         return False
-    users[u] = {"password": hash_password(p)}
+    users[username] = {"password": hash_password(password)}
     save_users(users)
-    os.makedirs(os.path.join(FILES_DIR, u), exist_ok=True)
+    os.makedirs(os.path.join(FILES_DIR, username), exist_ok=True)
     return True
 
-def login_user(u, p):
+def login(username, password):
     users = load_users()
-    return u in users and users[u]["password"] == hash_password(p)
+    return username in users and users[username]["password"] == hash_password(password)
 
-def generate_otp():
-    return random.randint(100000, 999999)
-
-
-# ---------- SECURITY ----------
-def buffer_overflow(data):
-    return len(data) > 1024
-
-def malware_scan(data):
-    return any(x in data.lower() for x in ["virus", "malware", "trojan"])
-
-
-# ---------- FILE OPS ----------
-def user_dir(u):
-    return os.path.join(FILES_DIR, u)
-
-def list_files(u):
-    return os.listdir(user_dir(u))
-
-def save_text_file(u, fname, text):
-    encrypted = cipher.encrypt(text.encode())
-    with open(os.path.join(user_dir(u), fname), "wb") as f:
-        f.write(encrypted)
-
-def read_text_file(u, fname):
-    with open(os.path.join(user_dir(u), fname), "rb") as f:
-        data = cipher.decrypt(f.read())
-    return data.decode()
-
-def upload_file(u, path):
-    if not os.path.exists(path):
-        print("❌ File not found")
-        return
+def encrypt_file(username, path):
     name = os.path.basename(path) + ".enc"
     with open(path, "rb") as f:
         encrypted = cipher.encrypt(f.read())
-    with open(os.path.join(user_dir(u), name), "wb") as f:
+    with open(os.path.join(FILES_DIR, username, name), "wb") as f:
         f.write(encrypted)
-    print("🔒 File uploaded & encrypted")
 
-def decrypt_file(u, fname):
-    out_name = fname.replace(".enc", "")
-    with open(os.path.join(user_dir(u), fname), "rb") as f:
-        decrypted = cipher.decrypt(f.read())
-    with open(out_name, "wb") as f:
-        f.write(decrypted)
-    print(f"✅ File decrypted and saved as {out_name}")
+def encrypt_text(username, filename, text):
+    encrypted = cipher.encrypt(text.encode())
+    with open(os.path.join(FILES_DIR, username, filename + ".enc"), "wb") as f:
+        f.write(encrypted)
 
-def metadata(u, fname):
-    p = os.path.join(user_dir(u), fname)
-    s = os.stat(p)
-    return s.st_size, datetime.fromtimestamp(s.st_ctime)
+def decrypt_file(username, filename):
+    with open(os.path.join(FILES_DIR, username, filename), "rb") as f:
+        data = cipher.decrypt(f.read())
+    out = os.path.join(DECRYPTED_DIR, filename.replace(".enc", ""))
+    with open(out, "wb") as f:
+        f.write(data)
+    return out
 
+# ---------------- GUI BASE ----------------
+root = Tk()
+root.title("Secure File Management System")
+root.geometry("600x450")
+root.resizable(False, False)
 
-# ---------- MAIN ----------
-print("\n🔐 Secure File Management System")
+current_user = None
 
-while True:
-    print("\n1. Register\n2. Login\n3. Exit")
-    c = input("Choice: ")
+def clear():
+    for w in root.winfo_children():
+        w.destroy()
 
-    if c == "1":
-        u = input("Username: ")
-        p = input("Password: ")
-        print("✅ Registered" if register_user(u, p) else "❌ User exists")
+def card():
+    root.configure(bg=theme["BG"])
+    f = Frame(root, bg=theme["CARD"])
+    f.place(relx=0.5, rely=0.5, anchor="center", width=420, height=380)
+    return f
 
-    elif c == "2":
-        u = input("Username: ")
-        p = input("Password: ")
-        if not login_user(u, p):
-            print("❌ Invalid login")
-            continue
+def title(parent, text):
+    Label(parent, text=text, font=FONT_TITLE,
+          bg=theme["CARD"], fg=theme["TEXT"]).pack(pady=15)
 
-        otp = generate_otp()
-        print("OTP:", otp)
-        if int(input("Enter OTP: ")) != otp:
-            print("❌ Wrong OTP")
-            continue
+def button(parent, text, color, cmd):
+    Button(parent, text=text, command=cmd,
+           bg=color, fg="white", font=FONT_BTN,
+           width=28, height=2, bd=0).pack(pady=6)
 
-        while True:
-            print("""
-1. Create encrypted text file
-2. Read encrypted TEXT file
-3. Decrypt & restore ANY file
-4. View metadata
-5. Upload & encrypt file
-6. Logout
-""")
-            ch = input("Choose: ")
+# ---------------- LOGIN ----------------
+def login_screen():
+    clear()
+    c = card()
+    title(c, "🔐 Secure File System")
 
-            if ch == "1":
-                fn = input("Filename: ")
-                text = input("Text: ")
-                if buffer_overflow(text) or malware_scan(text):
-                    print("⚠ Security threat detected")
+    Label(c, text="Username", bg=theme["CARD"], fg=theme["TEXT"]).pack(anchor="w", padx=40)
+    u = Entry(c, width=30)
+    u.pack(pady=4)
+
+    Label(c, text="Password", bg=theme["CARD"], fg=theme["TEXT"]).pack(anchor="w", padx=40)
+    p = Entry(c, show="*", width=30)
+    p.pack(pady=4)
+
+    def do_login():
+        global current_user
+        if login(u.get(), p.get()):
+            otp = random.randint(100000, 999999)
+            # Open OTP window
+            otp_win = Toplevel(root)
+            otp_win.title("Enter OTP")
+            otp_win.geometry("300x200")
+            otp_win.configure(bg=theme["CARD"])
+
+            Label(otp_win, text="Your OTP:", bg=theme["CARD"], fg=theme["TEXT"], font=FONT_LABEL).pack(pady=10)
+            otp_label = Label(otp_win, text=str(otp), font=("Segoe UI", 18, "bold"),
+                              bg=theme["CARD"], fg=theme["PRIMARY"])
+            otp_label.pack(pady=5)
+
+            Label(otp_win, text="Enter OTP below:", bg=theme["CARD"], fg=theme["TEXT"], font=FONT_LABEL).pack(pady=10)
+            otp_entry = Entry(otp_win, width=20)
+            otp_entry.pack(pady=5)
+
+            def verify_otp():
+                entered = otp_entry.get()
+                if entered.isdigit() and int(entered) == otp:
+                    otp_win.destroy()
+                    current_user = u.get()
+                    dashboard()
                 else:
-                    save_text_file(u, fn, text)
-                    print("🔒 Saved")
+                    messagebox.showerror("Error", "Invalid OTP")
 
-            elif ch == "2":
-                print(list_files(u))
-                fn = input("Text file name: ")
-                try:
-                    print(read_text_file(u, fn))
-                except:
-                    print("❌ Not a text file")
+            Button(otp_win, text="Verify", bg=theme["PRIMARY"], fg="white", font=FONT_BTN,
+                   command=verify_otp).pack(pady=10)
 
-            elif ch == "3":
-                print(list_files(u))
-                fn = input("Encrypted file (.enc): ")
-                decrypt_file(u, fn)
+        else:
+            messagebox.showerror("Error", "Invalid credentials")
 
-            elif ch == "4":
-                print(list_files(u))
-                fn = input("File: ")
-                size, time = metadata(u, fn)
-                print("Size:", size, "Created:", time)
+    button(c, "Login", theme["PRIMARY"], do_login)
+    button(c, "Register", theme["SUCCESS"], register_screen)
 
-            elif ch == "5":
-                upload_file(u, input("Enter full file path: "))
+# ---------------- REGISTER ----------------
+def register_screen():
+    clear()
+    c = card()
+    title(c, "📝 Register")
 
-            elif ch == "6":
-                break
+    Label(c, text="Username", bg=theme["CARD"], fg=theme["TEXT"]).pack(anchor="w", padx=40)
+    u = Entry(c, width=30)
+    u.pack(pady=4)
 
-    elif c == "3":
-        break
+    Label(c, text="Password", bg=theme["CARD"], fg=theme["TEXT"]).pack(anchor="w", padx=40)
+    p = Entry(c, show="*", width=30)
+    p.pack(pady=4)
+
+    def do_register():
+        if register(u.get(), p.get()):
+            messagebox.showinfo("Success", "Registered successfully")
+            login_screen()
+        else:
+            messagebox.showerror("Error", "User exists")
+
+    button(c, "Register", theme["SUCCESS"], do_register)
+    button(c, "Back", theme["PRIMARY"], login_screen)
+
+# ---------------- DASHBOARD ----------------
+def dashboard():
+    clear()
+    c = card()
+    title(c, f"👤 Welcome, {current_user}")
+
+    button(c, "📤 Upload & Encrypt File", theme["PRIMARY"], upload_file)
+    button(c, "📝 Create Secure Text", theme["PRIMARY"], create_text)
+    button(c, "🔓 Decrypt & Open File", theme["SUCCESS"], decrypt_gui)
+    button(c, "🚪 Logout", theme["DANGER"], logout)
+
+def upload_file():
+    path = filedialog.askopenfilename()
+    if path:
+        encrypt_file(current_user, path)
+        messagebox.showinfo("Success", "File encrypted")
+
+def create_text():
+    win = Toplevel(root)
+    win.title("Secure Text")
+    win.geometry("400x300")
+    win.configure(bg=theme["CARD"])
+
+    Label(win, text="Filename", bg=theme["CARD"], fg=theme["TEXT"]).pack(pady=5)
+    fname = Entry(win, width=40)
+    fname.pack(pady=5)
+
+    txt = Text(win, height=8, bg="white")
+    txt.pack(pady=5)
+
+    Button(win, text="Save", command=lambda: encrypt_text(
+        current_user, fname.get(), txt.get("1.0", END))).pack(pady=5)
+
+def decrypt_gui():
+    user_dir = os.path.join(FILES_DIR, current_user)
+    f = filedialog.askopenfilename(initialdir=user_dir)
+    if f:
+        out = decrypt_file(current_user, os.path.basename(f))
+        os.startfile(out)
+
+def logout():
+    global current_user
+    current_user = None
+    login_screen()
+
+# ---------------- START ----------------
+login_screen()
+root.mainloop()
