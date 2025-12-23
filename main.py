@@ -3,7 +3,7 @@ import json
 import hashlib
 import random
 from tkinter import *
-from tkinter import filedialog, messagebox, simpledialog
+from tkinter import filedialog, messagebox
 from cryptography.fernet import Fernet
 
 # ---------------- CONFIG ----------------
@@ -131,11 +131,12 @@ def login_screen():
         global current_user
         if login(u.get(), p.get()):
             otp = random.randint(100000, 999999)
-            # Open OTP window
+            # OTP window
             otp_win = Toplevel(root)
-            otp_win.title("Enter OTP")
+            otp_win.title("OTP Verification")
             otp_win.geometry("300x200")
             otp_win.configure(bg=theme["CARD"])
+            otp_win.resizable(False, False)
 
             Label(otp_win, text="Your OTP:", bg=theme["CARD"], fg=theme["TEXT"], font=FONT_LABEL).pack(pady=10)
             otp_label = Label(otp_win, text=str(otp), font=("Segoe UI", 18, "bold"),
@@ -150,6 +151,7 @@ def login_screen():
                 entered = otp_entry.get()
                 if entered.isdigit() and int(entered) == otp:
                     otp_win.destroy()
+                    global current_user
                     current_user = u.get()
                     dashboard()
                 else:
@@ -210,23 +212,41 @@ def create_text():
     win.title("Secure Text")
     win.geometry("400x300")
     win.configure(bg=theme["CARD"])
+    win.resizable(False, False)
 
     Label(win, text="Filename", bg=theme["CARD"], fg=theme["TEXT"]).pack(pady=5)
     fname = Entry(win, width=40)
     fname.pack(pady=5)
 
-    txt = Text(win, height=8, bg="white")
+    txt = Text(win, height=8, bg="#1e293b", fg="#e5e7eb")
     txt.pack(pady=5)
 
-    Button(win, text="Save", command=lambda: encrypt_text(
-        current_user, fname.get(), txt.get("1.0", END))).pack(pady=5)
+    def save_text():
+        filename = fname.get().strip()
+        content = txt.get("1.0", END)
+        if filename:
+            encrypt_text(current_user, filename, content)
+            messagebox.showinfo("Success", f"File '{filename}.enc' saved!")
+            win.destroy()  # Close window after saving
+        else:
+            messagebox.showerror("Error", "Please enter a filename.")
+
+    Button(win, text="Save", command=save_text, bg=theme["PRIMARY"], fg="white", font=FONT_BTN).pack(pady=5)
 
 def decrypt_gui():
     user_dir = os.path.join(FILES_DIR, current_user)
-    f = filedialog.askopenfilename(initialdir=user_dir)
+    os.makedirs(user_dir, exist_ok=True)  # Ensure folder exists
+    user_dir = os.path.abspath(user_dir)
+
+    f = filedialog.askopenfilename(initialdir=user_dir,
+                                   title="Select a file to decrypt",
+                                   filetypes=[("Encrypted Files", "*.enc")])
     if f:
         out = decrypt_file(current_user, os.path.basename(f))
-        os.startfile(out)
+        try:
+            os.startfile(out)  # Windows only
+        except Exception:
+            messagebox.showinfo("Decrypted", f"File saved at: {out}")
 
 def logout():
     global current_user
