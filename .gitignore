@@ -1,0 +1,22 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Database & Vault Storage
+vault.db
+vault.db-wal
+vault.db-shm
+vault_storage/
+users.json
+secret.key
+decrypted_files/
+encrypted_files/
+
+# Environments
+.venv/
+venv/
+ENV/
+
+# Testing cache
+.pytest_cache/
